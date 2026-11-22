@@ -27,11 +27,13 @@ import time
 # ── config ──────────────────────────────────────────────────────────────────
 CHECK_EVERY_SEC     = 2.5   # seconds between posture checks (lower = more CPU)
 TILT_THRESHOLD_DEG  = 12    # max head roll before it counts as bad (degrees)
-FORWARD_THRESHOLD   = 1.15  # face width > baseline × this = head forward (was 1.25)
+FORWARD_THRESHOLD   = 1.15  # face width > baseline × this = head forward
 CHIN_DOWN_THRESHOLD = 1.20  # pitch ratio > baseline × this = chin dropped / slouching
 CHIN_UP_THRESHOLD   = 0.85  # pitch ratio < baseline × this = chin raised / head back
-GRACE_PERIOD_SEC    = 5     # must stay bad for this long before alerting
-BEEP_COOLDOWN_SEC   = 15    # min seconds between consecutive beeps
+GRACE_PERIOD_SEC    = 5     # bad posture must persist this long before first alert
+REPEAT_BEEP_SEC     = 8     # keep alerting this often while posture stays bad
+USE_VOICE           = True  # speak the alert out loud via macOS say
+VOICE_MSG           = "Don't slouch"
 CALIBRATE_SEC       = 4     # how long to hold good posture during setup
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -79,13 +81,17 @@ def _measure(frame):
     return roll, face_w, pitch_ratio
 
 
-def _alert(msg):
+def _alert(issues, first=False):
+    msg = ", ".join(issues)
     print(f"⚠  {msg}")
     subprocess.Popen(BEEP, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.Popen(
-        ["osascript", "-e", f'display notification "{msg}" with title "NeckGuard"'],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    if USE_VOICE:
+        subprocess.Popen(["say", VOICE_MSG], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if first:   # notification only on first alert per episode — not every repeat
+        subprocess.Popen(
+            ["osascript", "-e", f'display notification "{msg}" with title "NeckGuard"'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 
 
 def _calibrate(cap):
@@ -251,14 +257,15 @@ def main():
                 if issues:
                     if bad_since is None:
                         bad_since = now
-                    elif (now - bad_since  >= GRACE_PERIOD_SEC and
-                          now - last_beep  >= BEEP_COOLDOWN_SEC):
-                        _alert(", ".join(issues))
-                        last_beep = now
-                        bad_since = now
+                    elif now - bad_since >= GRACE_PERIOD_SEC:
+                        first_alert = last_beep == 0.0
+                        if now - last_beep >= REPEAT_BEEP_SEC:
+                            _alert(issues, first=first_alert)
+                            last_beep = now
                 else:
                     if bad_since is not None:
                         print("✓ posture ok")
+                        last_beep = 0.0   # reset so next episode starts fresh
                     bad_since = None
 
                 time.sleep(CHECK_EVERY_SEC)
