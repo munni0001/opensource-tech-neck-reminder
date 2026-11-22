@@ -133,26 +133,18 @@ def _camera_names():
 
 
 def _resolve_camera(arg):
-    lower = arg.lower()
     names = _camera_names()
     if names:
         print(f"Cameras found: {names}")
 
+    lower = arg.lower()
+
     if lower in ("mac", "facetime", "builtin"):
-        for i, name in enumerate(names):
-            if any(k in name.lower() for k in ("facetime", "built-in", "isight")):
-                print(f"Using built-in camera: '{name}' (index {i})")
-                return i
-        print("Built-in camera not found by name, falling back to auto-detect.")
+        # system_profiler index order doesn't match OpenCV's — use face-detection scan instead
         return None
 
     if lower in ("iphone", "continuity"):
-        for i, name in enumerate(names):
-            if any(k in name.lower() for k in ("iphone", "continuity", "external")):
-                print(f"Using iPhone camera: '{name}' (index {i})")
-                return i
-        print("iPhone camera not found by name, falling back to index 0.")
-        return 0
+        return 0   # Continuity Camera is always OpenCV index 0 on macOS
 
     try:
         return int(arg)
