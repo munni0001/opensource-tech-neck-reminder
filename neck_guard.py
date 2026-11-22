@@ -17,6 +17,7 @@ Detects:
 """
 
 import cv2
+import json
 import mediapipe as mp
 import numpy as np
 import subprocess
@@ -113,14 +114,40 @@ def _calibrate(cap):
     return baseline_w, baseline_p
 
 
+def _camera_names():
+    """Ask macOS for the camera list in AVFoundation order (matches OpenCV indices)."""
+    try:
+        out = subprocess.run(
+            ["system_profiler", "SPCameraDataType", "-json"],
+            capture_output=True, text=True, timeout=5
+        ).stdout
+        return [c.get("_name", "") for c in json.loads(out).get("SPCameraDataType", [])]
+    except Exception:
+        return []
+
+
 def _resolve_camera(arg):
-    aliases = {
-        "mac": None, "facetime": None, "builtin": None,   # auto-detect skips black = finds built-in
-        "iphone": 0, "continuity": 0,                     # continuity camera is always index 0
-    }
     lower = arg.lower()
-    if lower in aliases:
-        return aliases[lower]
+    names = _camera_names()
+    if names:
+        print(f"Cameras found: {names}")
+
+    if lower in ("mac", "facetime", "builtin"):
+        for i, name in enumerate(names):
+            if any(k in name.lower() for k in ("facetime", "built-in", "isight")):
+                print(f"Using built-in camera: '{name}' (index {i})")
+                return i
+        print("Built-in camera not found by name, falling back to auto-detect.")
+        return None
+
+    if lower in ("iphone", "continuity"):
+        for i, name in enumerate(names):
+            if any(k in name.lower() for k in ("iphone", "continuity", "external")):
+                print(f"Using iPhone camera: '{name}' (index {i})")
+                return i
+        print("iPhone camera not found by name, falling back to index 0.")
+        return 0
+
     try:
         return int(arg)
     except ValueError:
@@ -159,7 +186,7 @@ def _open_camera(forced_idx=None):
 
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else "2-5"
-    cam_idx = _resolve_camera(sys.argv[2]) if len(sys.argv) > 2 else None
+    cam_idx = _resolve_camera(sys.argv[2]) if len(sys.argv) > 2 else _resolve_camera("mac")
     watch_sec, rest_sec = _parse_cycle(arg)
     print(f"Cycle: watch {watch_sec//60}min → camera off {rest_sec//60}min → repeat")
 
