@@ -166,6 +166,8 @@ def _parse_cycle(arg):
 
 def _open_camera(forced_idx=None):
     indices = [forced_idx] if forced_idx is not None else range(4)
+    fallback = None   # first camera with a bright frame but no face yet
+
     for idx in indices:
         cap = cv2.VideoCapture(idx)
         if not cap.isOpened():
@@ -176,11 +178,25 @@ def _open_camera(forced_idx=None):
         for _ in range(20):   # let sensor warm up
             cap.grab()
         ok, frame = cap.read()
-        if ok and frame is not None and frame.size > 0 and frame.mean() > 1:
-            print(f"Camera index {idx} active.")
+        if not (ok and frame is not None and frame.size > 0 and frame.mean() > 1):
+            cap.release()
+            continue
+        # Try face detection — built-in camera sees you, iPhone usually won't
+        if _measure(frame) is not None:
+            print(f"Camera index {idx} active (face detected).")
+            if fallback:
+                fallback.release()
             return cap
-        cap.release()
-    print("ERROR: no working camera found. Try specifying an index: neckcare 2-5 1")
+        if fallback is None:
+            fallback = cap
+        else:
+            cap.release()
+
+    if fallback:
+        print("Camera active (no face detected during selection — sit in front of camera before starting).")
+        return fallback
+
+    print("ERROR: no working camera found.")
     sys.exit(1)
 
 
