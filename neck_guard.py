@@ -5,7 +5,9 @@ neck_guard.py — beep + macOS notification when posture slips.
 Usage:
   python neck_guard.py          # default 2-5, auto-detect camera
   python neck_guard.py 2-5
-  python neck_guard.py 2-5 1   # force camera index 1 (if auto picks wrong one)
+  python neck_guard.py 2-5 mac      # force built-in FaceTime camera
+  python neck_guard.py 2-5 iphone   # force iPhone Continuity Camera
+  python neck_guard.py 2-5 1        # force by index number
 
 Detects:
   - Head tilt left/right  (roll angle between eye corners)
@@ -111,6 +113,21 @@ def _calibrate(cap):
     return baseline_w, baseline_p
 
 
+def _resolve_camera(arg):
+    aliases = {
+        "mac": None, "facetime": None, "builtin": None,   # auto-detect skips black = finds built-in
+        "iphone": 0, "continuity": 0,                     # continuity camera is always index 0
+    }
+    lower = arg.lower()
+    if lower in aliases:
+        return aliases[lower]
+    try:
+        return int(arg)
+    except ValueError:
+        print(f"Unknown camera '{arg}'. Use: mac, iphone, or a number (0, 1, 2 …)")
+        sys.exit(1)
+
+
 def _parse_cycle(arg):
     try:
         watch, rest = arg.split("-")
@@ -142,7 +159,7 @@ def _open_camera(forced_idx=None):
 
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else "2-5"
-    cam_idx = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    cam_idx = _resolve_camera(sys.argv[2]) if len(sys.argv) > 2 else None
     watch_sec, rest_sec = _parse_cycle(arg)
     print(f"Cycle: watch {watch_sec//60}min → camera off {rest_sec//60}min → repeat")
 
